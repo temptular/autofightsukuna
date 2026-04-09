@@ -32,7 +32,7 @@ end)
 
 task.spawn(function()
 	task.wait(10)
-	loadstring(game:HttpGet("https://raw.githubusercontent.com/temptular/autofightsukuna/refs/heads/main/fightsukuna"))()
+	loadstring(game:HttpGet("https://raw.githubusercontent.com/temptular/autofightsukuna/refs/heads/main/mobilesukunafight"))()
 end)
 
 local background = Instance.new("Frame")
