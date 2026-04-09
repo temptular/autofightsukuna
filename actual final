@@ -1,0 +1,8 @@
+local URL = "https://raw.githubusercontent.com/temptular/autofightsukuna/refs/heads/main/mobilecompatablefinal"
+
+if queue_on_teleport then
+    local tpl = "local u=%q local t=%q if queue_on_teleport then queue_on_teleport(string.format(t,u,t))end loadstring(game:HttpGet(u))()"
+    queue_on_teleport(string.format(tpl, URL, tpl))
+end
+
+loadstring(game:HttpGet(URL))()
