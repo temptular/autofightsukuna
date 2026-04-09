@@ -1,0 +1,236 @@
+-- ============================================================
+--  BossFight.lua  (Mobile-Compatible)
+--  Place this as a LocalScript inside: StarterPlayerScripts
+-- ============================================================
+
+local PLACE_ID = 98659774334651
+if game.PlaceId ~= PLACE_ID then
+    warn("Wrong game, script stopped")
+    return
+end
+
+local Players             = game:GetService("Players")
+local UserInputService    = game:GetService("UserInputService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+
+local player    = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- ============================================================
+--  MOBILE DETECTION
+-- ============================================================
+
+local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+
+-- ============================================================
+--  CONFIGURATION
+-- ============================================================
+
+local TELEPORT_BEHIND_OFFSET = 4
+local TELEPORT_INTERVAL      = 0.1
+local KEY_PRESS_DELAY        = 0.1
+
+-- ============================================================
+--  STATE
+-- ============================================================
+
+local isEnabled      = true
+local teleportThread = nil
+local abilityThread  = nil
+
+-- ============================================================
+--  ABILITY KEYS (PC only)
+-- ============================================================
+
+local ABILITY_KEYS = {
+    Enum.KeyCode.One,   Enum.KeyCode.Two,   Enum.KeyCode.Three,
+    Enum.KeyCode.Four,  Enum.KeyCode.Five,  Enum.KeyCode.Six,
+    Enum.KeyCode.Seven,
+}
+
+-- ============================================================
+--  FIRE ABILITIES
+-- ============================================================
+
+local function fireAbilities()
+    local char = player.Character
+    if not char then return end
+
+    if isMobile then
+        -- Mobile: equip and activate each tool from the backpack
+        local tools = {}
+        for _, tool in ipairs(player.Backpack:GetChildren()) do
+            if tool:IsA("Tool") then
+                table.insert(tools, tool)
+            end
+        end
+
+        for _, tool in ipairs(tools) do
+            if not isEnabled then break end
+            tool.Parent = char
+            task.wait(0.05)
+            pcall(function() tool:Activate() end)
+            task.wait(KEY_PRESS_DELAY)
+            tool.Parent = player.Backpack
+            task.wait(0.05)
+        end
+    else
+        -- PC: simulate key presses 1-7
+        for _, keyCode in ipairs(ABILITY_KEYS) do
+            if not isEnabled then break end
+            pcall(function()
+                VirtualInputManager:SendKeyEvent(true,  keyCode, false, game)
+                task.wait(0.05)
+                VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
+            end)
+            task.wait(KEY_PRESS_DELAY)
+        end
+    end
+end
+
+-- ============================================================
+--  CORE: Teleport behind Sukuna
+-- ============================================================
+
+local function getBoss()
+    local map = workspace:FindFirstChild("Map")
+    if not map then return nil end
+    local bossFolder = map:FindFirstChild("Boss")
+    if not bossFolder then return nil end
+    local main = bossFolder:FindFirstChild("Main")
+    if not main then return nil end
+    local bosses = main:FindFirstChild("Bosses")
+    if not bosses then return nil end
+    return bosses:FindFirstChild("Sukuna")
+end
+
+local function teleportBehindBoss(character)
+    local boss = getBoss()
+    if not boss then return end
+
+    local bossRoot = boss:FindFirstChild("HumanoidRootPart", true)
+                  or (boss:IsA("Model") and boss.PrimaryPart)
+                  or boss:FindFirstChildWhichIsA("BasePart", true)
+    if not bossRoot then return end
+
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    if not rootPart then return end
+
+    local behindPoint = bossRoot.Position - (bossRoot.CFrame.LookVector * TELEPORT_BEHIND_OFFSET)
+    rootPart.CFrame   = CFrame.new(behindPoint, bossRoot.Position)
+end
+
+-- ============================================================
+--  MAIN LOOPS
+-- ============================================================
+
+local function stopLoops()
+    if teleportThread then task.cancel(teleportThread) teleportThread = nil end
+    if abilityThread  then task.cancel(abilityThread)  abilityThread  = nil end
+end
+
+local function startLoops()
+    stopLoops()
+    if not isEnabled then return end
+
+    teleportThread = task.spawn(function()
+        task.wait(0.5)
+        while isEnabled and player.Parent ~= nil do
+            local character = player.Character
+            if character then teleportBehindBoss(character) end
+            task.wait(TELEPORT_INTERVAL)
+        end
+    end)
+
+    abilityThread = task.spawn(function()
+        task.wait(0.5)
+        while isEnabled and player.Parent ~= nil do
+            local character = player.Character
+            if character then fireAbilities() end
+            task.wait(0.1)
+        end
+    end)
+end
+
+player.CharacterAdded:Connect(function()
+    task.wait(0.1)
+    startLoops()
+end)
+
+if player.Character then
+    startLoops()
+end
+
+-- ============================================================
+--  GUI: Toggle button (larger on mobile)
+-- ============================================================
+
+local BUTTON_W = isMobile and 220 or 160
+local BUTTON_H = isMobile and 70  or 50
+
+local screenGui        = Instance.new("ScreenGui")
+screenGui.Name         = "BossFightToggleGui"
+screenGui.ResetOnSpawn = false
+screenGui.Parent       = playerGui
+
+local frame            = Instance.new("Frame")
+frame.Size             = UDim2.new(0, BUTTON_W, 0, BUTTON_H)
+frame.Position         = UDim2.new(0, 20, 0.5, -(BUTTON_H / 2))
+frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+frame.BorderSizePixel  = 0
+frame.Parent           = screenGui
+Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)
+
+local button            = Instance.new("TextButton")
+button.Size             = UDim2.new(1, -16, 1, -12)
+button.Position         = UDim2.new(0, 8, 0, 6)
+button.BackgroundColor3 = Color3.fromRGB(60, 180, 90)
+button.BorderSizePixel  = 0
+button.Text             = "Attack: ON"
+button.TextColor3       = Color3.fromRGB(255, 255, 255)
+button.TextScaled       = true
+button.Font             = Enum.Font.GothamBold
+button.Parent           = frame
+Instance.new("UICorner", button).CornerRadius = UDim.new(0, 7)
+
+local function updateButton()
+    if isEnabled then
+        button.Text             = "Attack: ON"
+        button.BackgroundColor3 = Color3.fromRGB(60, 180, 90)
+    else
+        button.Text             = "Attack: OFF"
+        button.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
+    end
+end
+
+button.MouseButton1Click:Connect(function()
+    isEnabled = not isEnabled
+    updateButton()
+    if isEnabled then startLoops() else stopLoops() end
+end)
+
+local dragging, dragStart, startPos = false, nil, nil
+frame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        dragging  = true
+        dragStart = input.Position
+        startPos  = frame.Position
+    end
+end)
+frame.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+                  or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        frame.Position = UDim2.new(
+            startPos.X.Scale, startPos.X.Offset + delta.X,
+            startPos.Y.Scale, startPos.Y.Offset + delta.Y
+        )
+    end
+end)
